@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 function App() {
   const [data, setData] = useState([]);
@@ -13,6 +13,7 @@ function App() {
         temperature: parseFloat(reading.temperature.toFixed(2)),
         vibration: parseFloat(reading.vibration.toFixed(2)),
         pressure: parseFloat(reading.pressure.toFixed(2)),
+        anomaly: reading.anomaly
       }]);
     };
 
@@ -21,10 +22,18 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const latestAnomaly = data.length > 0 && data[data.length - 1].anomaly;
+
   return (
     <div style={{ background: "#0f1117", minHeight: "100vh", padding: "2rem", color: "white", fontFamily: "sans-serif" }}>
       <h1 style={{ marginBottom: "0.25rem" }}>🛡️ SENTINEL</h1>
-      <p style={{ color: "#888", marginBottom: "2rem" }}>Live Predictive Maintenance Dashboard</p>
+      <p style={{ color: "#888", marginBottom: "1rem" }}>Live Predictive Maintenance Dashboard</p>
+
+      {latestAnomaly && (
+        <div style={{ background: "#ff4d4d22", border: "1px solid #ff4d4d", borderRadius: "8px", padding: "1rem", color: "#ff4d4d", fontSize: "16px", marginBottom: "1.5rem" }}>
+          ⚠️ ANOMALY DETECTED — Check your system immediately
+        </div>
+      )}
 
       <h3>Temperature (°C)</h3>
       <ResponsiveContainer width="100%" height={200}>

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal, SensorReading, init_db
 import random
 import time
+from anomaly import train_model, detect_anomaly
 
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +38,21 @@ def get_sensor_data(db: Session = Depends(get_db)):
     db.add(reading)
     db.commit()
     db.refresh(reading)
-    return reading
+
+    all_readings = db.query(SensorReading).all()
+    if len(all_readings) >= 10:
+        train_model(all_readings)
+
+    is_anomaly = detect_anomaly(reading.temperature, reading.vibration, reading.pressure)
+
+    return {
+        "id": reading.id,
+        "timestamp": reading.timestamp,
+        "temperature": reading.temperature,
+        "vibration": reading.vibration,
+        "pressure": reading.pressure,
+        "anomaly": bool(is_anomaly)
+    }
 
 @app.get("/readings")
 def get_all_readings(db: Session = Depends(get_db)):
