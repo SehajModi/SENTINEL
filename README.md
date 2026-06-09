@@ -5,9 +5,9 @@
 
 ---
 
-## 🔥 Demo
-[Add GIF here]
-
+## 🔥 Live Demo
+- **Dashboard:** https://sentinel-three-lyart.vercel.app
+- **API:** https://sentinel-production-4d8e.up.railway.app
 ---
 
 ## 🧠 How It Works
