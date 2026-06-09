@@ -4,6 +4,8 @@ from database import SessionLocal, SensorReading, init_db
 import random
 import time
 from anomaly import train_model, detect_anomaly
+from lstm_model import predict_anomaly
+import numpy as np
 
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,3 +59,18 @@ def get_sensor_data(db: Session = Depends(get_db)):
 @app.get("/readings")
 def get_all_readings(db: Session = Depends(get_db)):
     return db.query(SensorReading).all()
+
+@app.get("/predict/lstm")
+def lstm_predict():
+    db = SessionLocal()
+    readings = db.query(SensorReading)\
+        .order_by(SensorReading.timestamp.desc())\
+        .limit(10).all()
+    db.close()
+
+    if len(readings) < 10:
+        return {"error": "Not enough data for LSTM prediction. Need 10 readings."}
+
+    readings.reverse()
+    sequence = np.array([[r.temperature, r.vibration, r.pressure] for r in readings])
+    return predict_anomaly(sequence)
