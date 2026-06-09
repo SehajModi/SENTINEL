@@ -37,7 +37,7 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const res = await fetch("http://127.0.0.1:8000/sensor-data");
+      const res = await fetch("https://sentinel-production-4d8e.up.railway.app/sensor-data");
       const reading = await res.json();
       const point = {
         id: reading.id,
