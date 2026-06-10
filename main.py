@@ -119,6 +119,28 @@ def retrain():
     train(sequence)
     return {"status": "retrained", "readings_used": len(readings)}
 
+@app.get("/seed")
+def seed_data(db: Session = Depends(get_db)):
+    """Seed 2000 realistic normal readings for LSTM training."""
+    import numpy as np
+    base_time = time.time() - (2000 * 10)  # spread over ~5.5 hours back
+    for i in range(2000):
+        temp = random.gauss(*NORMAL["temperature"])
+        vib  = random.gauss(*NORMAL["vibration"])
+        pres = random.gauss(*NORMAL["pressure"])
+        temp = max(50.0, min(130.0, temp))
+        vib  = max(0.1,  min(3.0,   vib))
+        pres = max(20.0, min(110.0, pres))
+        reading = SensorReading(
+            timestamp=base_time + i * 10,
+            temperature=temp,
+            vibration=vib,
+            pressure=pres,
+        )
+        db.add(reading)
+    db.commit()
+    return {"status": "seeded", "rows_added": 2000}
+
 @app.get("/predict/lstm")
 def lstm_predict():
     db = SessionLocal()
