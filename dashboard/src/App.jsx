@@ -1,54 +1,258 @@
-import { useEffect, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useEffect, useState, useRef } from "react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, ReferenceLine
+} from "recharts";
 
-const StatCard = ({ title, value, unit, color, anomaly }) => (
+const API = "https://sentinel-production-4d8e.up.railway.app";
+
+// ── Colour tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:        "#080b12",
+  surface:   "#0f1420",
+  card:      "#131929",
+  border:    "#1e2740",
+  borderHot: "#ff4d4d",
+  temp:      "#ff6b6b",
+  vib:       "#4da6ff",
+  pres:      "#4dff91",
+  warn:      "#ffaa4d",
+  muted:     "#4a5568",
+  label:     "#8892a4",
+};
+
+// ── Tiny helpers ───────────────────────────────────────────────────────────
+const fmt = (v, d = 2) => (v != null ? Number(v).toFixed(d) : "--");
+const ts  = () => new Date().toLocaleTimeString("en-IN", { hour12: false });
+
+// ── Confidence bar ─────────────────────────────────────────────────────────
+// reconstruction_error from LSTM Autoencoder: lower = more normal.
+// We normalise to a 0-100 "anomaly confidence" for display.
+// Tune MAX_ERR if your model's typical error range is different.
+const MAX_ERR = 0.5;
+const toConfidence = (err) =>
+  err != null ? Math.min(100, Math.round((err / MAX_ERR) * 100)) : null;
+
+const ConfidenceBar = ({ value }) => {
+  if (value == null) return (
+    <span style={{ color: C.muted, fontSize: 11 }}>—</span>
+  );
+  const color = value > 70 ? C.borderHot : value > 40 ? C.warn : "#4dff91";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, height: 6, background: "#1e2740", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ width: `${value}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
+      </div>
+      <span style={{ fontSize: 11, color, minWidth: 32, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+        {value}%
+      </span>
+    </div>
+  );
+};
+
+// ── Model eye indicator ────────────────────────────────────────────────────
+const ModelEye = ({ label, active, sub }) => (
   <div style={{
-    background: "#1a1d27",
-    border: `1px solid ${anomaly ? '#ff4d4d' : '#2a2d3a'}`,
-    borderRadius: "12px",
-    padding: "1.25rem 1.5rem",
-    flex: 1,
-    transition: "border-color 0.3s"
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+    background: C.card, border: `1px solid ${active ? C.borderHot : C.border}`,
+    borderRadius: 10, padding: "10px 18px", minWidth: 100,
+    transition: "border-color 0.3s",
   }}>
-    <div style={{ fontSize: "12px", color: "#666", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>{title}</div>
-    <div style={{ fontSize: "32px", fontWeight: "600", color: color }}>{value}<span style={{ fontSize: "14px", color: "#666", marginLeft: "4px" }}>{unit}</span></div>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%",
+        background: active ? C.borderHot : "#4dff91",
+        boxShadow: `0 0 8px ${active ? C.borderHot : "#4dff91"}`,
+        transition: "background 0.3s, box-shadow 0.3s",
+      }} />
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", color: active ? C.borderHot : "#4dff91" }}>
+        {label}
+      </span>
+    </div>
+    <span style={{ fontSize: 10, color: C.muted }}>{sub}</span>
   </div>
 );
 
-const SectionChart = ({ title, dataKey, color, data }) => (
-  <div style={{ background: "#1a1d27", borderRadius: "12px", padding: "1.25rem", marginBottom: "16px" }}>
-    <div style={{ fontSize: "13px", color: "#888", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "12px" }}>{title}</div>
-    <ResponsiveContainer width="100%" height={160}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" />
-        <XAxis dataKey="id" stroke="#444" tick={{ fontSize: 11 }} />
-        <YAxis stroke="#444" tick={{ fontSize: 11 }} />
-        <Tooltip contentStyle={{ background: "#1a1d27", border: "1px solid #2a2d3a", borderRadius: "8px", color: "#fff" }} />
-        <Line type="monotone" dataKey={dataKey} stroke={color} dot={false} strokeWidth={2} />
-      </LineChart>
-    </ResponsiveContainer>
+// ── Stat card ──────────────────────────────────────────────────────────────
+const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
+  <div style={{
+    background: C.card,
+    border: `1px solid ${anomaly ? C.borderHot : C.border}`,
+    borderRadius: 12, padding: "1.1rem 1.25rem", flex: 1,
+    transition: "border-color 0.3s",
+  }}>
+    <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+      {title}
+    </div>
+    <div style={{ fontSize: 28, fontWeight: 700, color, fontVariantNumeric: "tabular-nums", marginBottom: lstmConf != null ? 10 : 0 }}>
+      {value}
+      <span style={{ fontSize: 13, color: C.muted, marginLeft: 4 }}>{unit}</span>
+    </div>
+    {lstmConf != null && (
+      <div>
+        <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>LSTM ANOMALY CONF.</div>
+        <ConfidenceBar value={lstmConf} />
+      </div>
+    )}
   </div>
 );
 
+// ── Custom chart tooltip ───────────────────────────────────────────────────
+const ChartTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const d = payload[0];
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+      <div style={{ color: d.color, fontWeight: 600 }}>{fmt(d.value)}</div>
+      <div style={{ color: C.muted }}>reading #{d.payload.id}</div>
+      {d.payload.anomaly && <div style={{ color: C.borderHot, marginTop: 2 }}>⚠ anomaly</div>}
+    </div>
+  );
+};
+
+// ── Sensor chart ───────────────────────────────────────────────────────────
+const SensorChart = ({ title, dataKey, color, data }) => {
+  const anomalyIds = data.filter(d => d.anomaly).map(d => d.id);
+  return (
+    <div style={{ background: C.card, borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
+        {title}
+      </div>
+      <ResponsiveContainer width="100%" height={150}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+          <XAxis dataKey="id" stroke={C.muted} tick={{ fontSize: 10 }} />
+          <YAxis stroke={C.muted} tick={{ fontSize: 10 }} width={36} />
+          <Tooltip content={<ChartTooltip />} />
+          {anomalyIds.map(id => (
+            <ReferenceLine key={id} x={id} stroke={C.borderHot} strokeOpacity={0.35} strokeWidth={1} />
+          ))}
+          <Line
+            type="monotone" dataKey={dataKey} stroke={color}
+            dot={false} strokeWidth={2} activeDot={{ r: 4, fill: color }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// ── Anomaly timeline ───────────────────────────────────────────────────────
+const AnomalyTimeline = ({ events }) => (
+  <div style={{ background: C.card, borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: 12 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <span style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+        Anomaly Log
+      </span>
+      <span style={{ fontSize: 11, color: C.muted }}>{events.length} events</span>
+    </div>
+    {events.length === 0 ? (
+      <div style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: "1.5rem 0" }}>
+        No anomalies detected this session
+      </div>
+    ) : (
+      <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+        {[...events].reverse().map((e, i) => (
+          <div key={i} style={{
+            display: "flex", alignItems: "center", gap: 12,
+            background: C.surface, borderRadius: 8,
+            padding: "9px 12px", border: `1px solid ${C.border}`,
+            fontSize: 12,
+          }}>
+            {/* time + reading id */}
+            <div style={{ minWidth: 64, color: C.muted, fontSize: 10, lineHeight: 1.5 }}>
+              <div style={{ fontVariantNumeric: "tabular-nums" }}>{e.time}</div>
+              <div>#{e.id}</div>
+            </div>
+            {/* sensor values */}
+            <div style={{ flex: 1, display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <span style={{ color: C.temp }}>{fmt(e.temperature)} °C</span>
+              <span style={{ color: C.vib }}>{fmt(e.vibration)} g</span>
+              <span style={{ color: C.pres }}>{fmt(e.pressure)} kPa</span>
+            </div>
+            {/* which model caught it */}
+            <div style={{ display: "flex", gap: 4 }}>
+              {e.if_anomaly && (
+                <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#ff4d4d22", color: C.borderHot, fontWeight: 600 }}>
+                  IF
+                </span>
+              )}
+              {e.lstm_anomaly && (
+                <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#4da6ff22", color: C.vib, fontWeight: 600 }}>
+                  LSTM
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+// ── Main app ───────────────────────────────────────────────────────────────
 function App() {
-  const [data, setData] = useState([]);
-  const [latest, setLatest] = useState(null);
-  const [anomalyCount, setAnomalyCount] = useState(0);
+  const [data,         setData]         = useState([]);
+  const [latest,       setLatest]       = useState(null);
+  const [lstmResult,   setLstmResult]   = useState(null);   // {anomaly, reconstruction_error}
+  const [anomalyLog,   setAnomalyLog]   = useState([]);
+  const [totalReadings, setTotalReadings] = useState(0);
+
+  const lstmConf = toConfidence(lstmResult?.reconstruction_error);
+  const ifAnomaly   = latest?.anomaly   ?? false;
+  const lstmAnomaly = lstmResult?.anomaly ?? false;
+  const anyAnomaly  = ifAnomaly || lstmAnomaly;
 
   useEffect(() => {
     const fetchData = async () => {
-      const res = await fetch("https://sentinel-production-4d8e.up.railway.app/sensor-data");
-      const reading = await res.json();
-      const point = {
-        id: reading.id,
-        temperature: parseFloat(reading.temperature.toFixed(2)),
-        vibration: parseFloat(reading.vibration.toFixed(2)),
-        pressure: parseFloat(reading.pressure.toFixed(2)),
-        anomaly: reading.anomaly
-      };
-      setLatest(point);
-      if (reading.anomaly) setAnomalyCount(p => p + 1);
-      setData(prev => [...prev.slice(-30), point]);
+      try {
+        // 1. Fetch latest sensor reading (includes IsolationForest result)
+        const res     = await fetch(`${API}/sensor-data`);
+        const reading = await res.json();
+
+        const point = {
+          id:          reading.id,
+          temperature: parseFloat(reading.temperature.toFixed(2)),
+          vibration:   parseFloat(reading.vibration.toFixed(2)),
+          pressure:    parseFloat(reading.pressure.toFixed(2)),
+          anomaly:     reading.anomaly,
+        };
+
+        // 2. Fetch LSTM prediction in parallel
+        // 2. Fetch LSTM prediction (GET — reads last 10 readings from DB itself)
+let lstm = null;
+try {
+  const lstmRes = await fetch(`${API}/predict/lstm`);
+  lstm = await lstmRes.json();
+} catch {
+  // LSTM endpoint unavailable — degrade gracefully
+}
+
+        setLatest(point);
+        setLstmResult(lstm);
+        setTotalReadings(r => r + 1);
+        setData(prev => [...prev.slice(-40), point]);
+
+        // Log to anomaly timeline if either model flagged it
+        const ifFlag   = point.anomaly;
+        const lstmFlag = lstm?.anomaly ?? false;
+        if (ifFlag || lstmFlag) {
+          setAnomalyLog(prev => [
+            ...prev.slice(-99),
+            {
+              id:           point.id,
+              time:         ts(),
+              temperature:  point.temperature,
+              vibration:    point.vibration,
+              pressure:     point.pressure,
+              if_anomaly:   ifFlag,
+              lstm_anomaly: lstmFlag,
+            },
+          ]);
+        }
+      } catch (err) {
+        console.error("Fetch error:", err);
+      }
     };
 
     fetchData();
@@ -56,47 +260,67 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const isAnomaly = latest?.anomaly;
-
   return (
-    <div style={{ background: "#0f1117", minHeight: "100vh", padding: "2rem", color: "white", fontFamily: "'Inter', sans-serif", maxWidth: "1100px", margin: "0 auto" }}>
-      
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "2rem" }}>
+    <div style={{
+      background: C.bg, minHeight: "100vh", padding: "1.75rem 2rem",
+      color: "white", fontFamily: "'Inter', 'SF Pro Text', system-ui, sans-serif",
+      maxWidth: 1140, margin: "0 auto",
+    }}>
+
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", letterSpacing: "-0.02em" }}>🛡️ SENTINEL</h1>
-          <p style={{ margin: "4px 0 0", color: "#555", fontSize: "13px" }}>Real-Time Predictive Maintenance Dashboard</p>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#e8eaf0" }}>
+            🛡️ SENTINEL
+          </h1>
+          <p style={{ margin: "3px 0 0", color: C.muted, fontSize: 12 }}>
+            Real-Time Predictive Maintenance · {totalReadings} readings
+          </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#1a1d27", padding: "8px 16px", borderRadius: "20px", border: "1px solid #2a2d3a" }}>
-          <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: isAnomaly ? "#ff4d4d" : "#4dff91", boxShadow: `0 0 8px ${isAnomaly ? "#ff4d4d" : "#4dff91"}` }}></div>
-          <span style={{ fontSize: "13px", color: isAnomaly ? "#ff4d4d" : "#4dff91" }}>{isAnomaly ? "ANOMALY DETECTED" : "SYSTEM NOMINAL"}</span>
+
+        {/* Dual model status strip */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <ModelEye label="ISOLATION FOREST" active={ifAnomaly}   sub="point anomaly" />
+          <ModelEye label="LSTM AUTOENCODER" active={lstmAnomaly} sub="sequence anomaly" />
         </div>
       </div>
 
-      {/* Anomaly Banner */}
-      {isAnomaly && (
-        <div style={{ background: "#ff4d4d15", border: "1px solid #ff4d4d", borderRadius: "10px", padding: "12px 16px", marginBottom: "1.5rem", color: "#ff4d4d", fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-          ⚠️ <strong>Anomaly detected</strong> — Unusual sensor pattern identified. Inspect system immediately.
+      {/* ── Anomaly banner ── */}
+      {anyAnomaly && (
+        <div style={{
+          background: "#ff4d4d12", border: `1px solid ${C.borderHot}`,
+          borderRadius: 10, padding: "11px 16px", marginBottom: "1.5rem",
+          color: C.borderHot, fontSize: 13, display: "flex", alignItems: "center", gap: 8,
+        }}>
+          ⚠️ <strong>Anomaly detected</strong> —&nbsp;
+          {ifAnomaly && lstmAnomaly ? "Both models flagging unusual patterns."
+            : ifAnomaly  ? "IsolationForest flagged a point outlier."
+            : "LSTM detected a sequential deviation."}
+          &nbsp;Inspect system immediately.
         </div>
       )}
 
-      {/* Stat Cards */}
-      <div style={{ display: "flex", gap: "12px", marginBottom: "1.5rem" }}>
-        <StatCard title="Temperature" value={latest?.temperature ?? "--"} unit="°C" color="#ff6b6b" anomaly={isAnomaly} />
-        <StatCard title="Vibration" value={latest?.vibration ?? "--"} unit="g" color="#4da6ff" anomaly={isAnomaly} />
-        <StatCard title="Pressure" value={latest?.pressure ?? "--"} unit="kPa" color="#4dff91" anomaly={isAnomaly} />
-        <StatCard title="Anomalies" value={anomalyCount} unit="flagged" color="#ffaa4d" anomaly={isAnomaly} />
+      {/* ── Stat cards ── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: "1.25rem", flexWrap: "wrap" }}>
+        <StatCard title="Temperature" value={fmt(latest?.temperature)} unit="°C"    color={C.temp} anomaly={anyAnomaly} lstmConf={lstmConf} />
+        <StatCard title="Vibration"   value={fmt(latest?.vibration)}   unit="g"     color={C.vib}  anomaly={anyAnomaly} lstmConf={lstmConf} />
+        <StatCard title="Pressure"    value={fmt(latest?.pressure)}    unit="kPa"   color={C.pres} anomaly={anyAnomaly} lstmConf={lstmConf} />
+        <StatCard title="Anomalies"   value={anomalyLog.length}        unit="flagged" color={C.warn} anomaly={anyAnomaly} />
       </div>
 
-      {/* Charts */}
-      <SectionChart title="Temperature (°C)" dataKey="temperature" color="#ff6b6b" data={data} />
-      <SectionChart title="Vibration (g)" dataKey="vibration" color="#4da6ff" data={data} />
-      <SectionChart title="Pressure (kPa)" dataKey="pressure" color="#4dff91" data={data} />
+      {/* ── Charts ── */}
+      <SensorChart title="Temperature (°C)" dataKey="temperature" color={C.temp} data={data} />
+      <SensorChart title="Vibration (g)"    dataKey="vibration"   color={C.vib}  data={data} />
+      <SensorChart title="Pressure (kPa)"   dataKey="pressure"    color={C.pres} data={data} />
 
-      {/* Footer */}
-      <div style={{ textAlign: "center", color: "#333", fontSize: "12px", marginTop: "1rem" }}>
-        SENTINEL v0.1 · Built by Sehaj Modi · {data.length} readings this session
+      {/* ── Anomaly timeline ── */}
+      <AnomalyTimeline events={anomalyLog} />
+
+      {/* ── Footer ── */}
+      <div style={{ textAlign: "center", color: "#2a2d3a", fontSize: 11, marginTop: "0.75rem" }}>
+        SENTINEL v0.2 · Sehaj Modi · IsolationForest + LSTM Autoencoder
       </div>
+
     </div>
   );
 }
