@@ -155,3 +155,34 @@ def lstm_predict():
     readings.reverse()
     sequence = np.array([[r.temperature, r.vibration, r.pressure] for r in readings])
     return predict_anomaly(sequence)
+
+BASELINES = {
+    "temperature": (80, 10),  # (mean, std)
+    "vibration":   (0.6, 0.3),
+    "pressure":    (65, 10),
+}
+
+@app.get("/explain")
+def explain(db: Session = Depends(get_db)):
+    reading = db.query(SensorReading).order_by(SensorReading.id.desc()).first()
+    if not reading:
+        return {"error": "no readings"}
+
+    deviations = {}
+    for sensor, (mean, std) in BASELINES.items():
+        val = getattr(reading, sensor)
+        z = (val - mean) / std
+        deviations[sensor] = round(z, 3)
+
+    # Primary cause = highest absolute deviation
+    primary = max(deviations, key=lambda k: abs(deviations[k]))
+    z_val = deviations[primary]
+    direction = "above" if z_val > 0 else "below"
+
+    return {
+        "reading_id": reading.id,
+        "primary_cause": primary,
+        "z_score": z_val,
+        "explanation": f"{primary} was {abs(z_val):.1f}σ {direction} normal baseline",
+        "all_deviations": deviations,
+    }
