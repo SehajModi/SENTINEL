@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine
@@ -25,18 +25,108 @@ const C = {
 const fmt = (v, d = 2) => (v != null ? Number(v).toFixed(d) : "--");
 const ts  = () => new Date().toLocaleTimeString("en-IN", { hour12: false });
 
+// ── Composite health score ─────────────────────────────────────────────────
+// Combines IF anomaly, LSTM reconstruction loss, and sensor range proximity
+// into a single 0–100 "machine health" score. 100 = perfectly healthy.
+const TEMP_MAX  = 120;  // sensor range ceiling
+const VIB_MAX   = 2.5;
+const PRES_MIN  = 30;
+const PRES_MAX  = 100;
+const MAX_LOSS  = 0.5;
+
+function computeHealth(point, lstmResult) {
+  if (!point) return null;
+
+  // Sensor proximity penalty: how close are we to dangerous edge of range?
+  const tempScore = 100 - ((point.temperature - 60) / (TEMP_MAX - 60)) * 100;
+  const vibScore  = 100 - (point.vibration / VIB_MAX) * 100;
+  const presScore = 100 - Math.abs((point.pressure - 65) / 35) * 100; // 65 is midpoint
+  const sensorAvg = (tempScore + vibScore + presScore) / 3;
+
+  // ML penalty: each model that fires subtracts points
+  const ifPenalty   = (lstmResult?.lstm_anomaly === undefined ? false : point.anomaly) ? 25 : 0;
+  const lstmPenalty = lstmResult?.lstm_anomaly
+    ? Math.min(25, Math.round((lstmResult.reconstruction_loss / MAX_LOSS) * 25))
+    : 0;
+
+  const raw = sensorAvg - ifPenalty - lstmPenalty;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+function healthColor(score) {
+  if (score == null) return C.muted;
+  if (score >= 75) return "#4dff91";
+  if (score >= 50) return C.warn;
+  return C.borderHot;
+}
+
+function healthLabel(score) {
+  if (score == null) return "INITIALISING";
+  if (score >= 75) return "HEALTHY";
+  if (score >= 50) return "DEGRADED";
+  return "CRITICAL";
+}
+
+// ── Health score ring ──────────────────────────────────────────────────────
+const HealthRing = ({ score }) => {
+  const color  = healthColor(score);
+  const label  = healthLabel(score);
+  const radius = 38;
+  const circ   = 2 * Math.PI * radius;
+  const dash   = score != null ? (score / 100) * circ : 0;
+
+  return (
+    <div style={{
+      background: C.card, border: `1px solid ${C.border}`,
+      borderRadius: 12, padding: "1.1rem 1.5rem",
+      display: "flex", alignItems: "center", gap: 20,
+    }}>
+      {/* SVG ring */}
+      <svg width={96} height={96} style={{ flexShrink: 0 }}>
+        {/* track */}
+        <circle cx={48} cy={48} r={radius} fill="none" stroke={C.border} strokeWidth={7} />
+        {/* progress */}
+        <circle
+          cx={48} cy={48} r={radius} fill="none"
+          stroke={color} strokeWidth={7}
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          transform="rotate(-90 48 48)"
+          style={{ transition: "stroke-dasharray 0.6s ease, stroke 0.4s ease" }}
+        />
+        <text x={48} y={44} textAnchor="middle" fill={color}
+          fontSize={22} fontWeight={700} fontFamily="Inter, system-ui">
+          {score ?? "--"}
+        </text>
+        <text x={48} y={60} textAnchor="middle" fill={C.muted}
+          fontSize={9} fontFamily="Inter, system-ui" letterSpacing={1}>
+          / 100
+        </text>
+      </svg>
+      {/* label block */}
+      <div>
+        <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+          Machine Health
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color, letterSpacing: "-0.02em", marginBottom: 6 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+          Sensor range · IF · LSTM loss<br />
+          composite score
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Confidence bar ─────────────────────────────────────────────────────────
-// reconstruction_error from LSTM Autoencoder: lower = more normal.
-// We normalise to a 0-100 "anomaly confidence" for display.
-// Tune MAX_ERR if your model's typical error range is different.
 const MAX_ERR = 0.5;
 const toConfidence = (err) =>
   err != null ? Math.min(100, Math.round((err / MAX_ERR) * 100)) : null;
 
 const ConfidenceBar = ({ value }) => {
-  if (value == null) return (
-    <span style={{ color: C.muted, fontSize: 11 }}>—</span>
-  );
+  if (value == null) return <span style={{ color: C.muted, fontSize: 11 }}>—</span>;
   const color = value > 70 ? C.borderHot : value > 40 ? C.warn : "#4dff91";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -159,18 +249,15 @@ const AnomalyTimeline = ({ events }) => (
             padding: "9px 12px", border: `1px solid ${C.border}`,
             fontSize: 12,
           }}>
-            {/* time + reading id */}
             <div style={{ minWidth: 64, color: C.muted, fontSize: 10, lineHeight: 1.5 }}>
               <div style={{ fontVariantNumeric: "tabular-nums" }}>{e.time}</div>
               <div>#{e.id}</div>
             </div>
-            {/* sensor values */}
             <div style={{ flex: 1, display: "flex", gap: 14, flexWrap: "wrap" }}>
               <span style={{ color: C.temp }}>{fmt(e.temperature)} °C</span>
               <span style={{ color: C.vib }}>{fmt(e.vibration)} g</span>
               <span style={{ color: C.pres }}>{fmt(e.pressure)} kPa</span>
             </div>
-            {/* which model caught it */}
             <div style={{ display: "flex", gap: 4 }}>
               {e.if_anomaly && (
                 <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#ff4d4d22", color: C.borderHot, fontWeight: 600 }}>
@@ -192,25 +279,26 @@ const AnomalyTimeline = ({ events }) => (
 
 // ── Main app ───────────────────────────────────────────────────────────────
 function App() {
-  const [data,         setData]         = useState([]);
-  const [latest,       setLatest]       = useState(null);
-  const [lstmResult,   setLstmResult]   = useState(null);   // {anomaly, reconstruction_error}
-  const [anomalyLog,   setAnomalyLog]   = useState([]);
+  const [data,          setData]          = useState([]);
+  const [latest,        setLatest]        = useState(null);
+  const [lstmResult,    setLstmResult]    = useState(null);
+  const [anomalyLog,    setAnomalyLog]    = useState([]);
   const [totalReadings, setTotalReadings] = useState(0);
 
-  const lstmConf = toConfidence(lstmResult?.reconstruction_error);
-  const ifAnomaly   = latest?.anomaly   ?? false;
-  const lstmAnomaly = lstmResult?.anomaly ?? false;
+  // ── Derived state ──────────────────────────────────────────────────────
+  const lstmConf    = toConfidence(lstmResult?.reconstruction_loss);
+  const ifAnomaly   = latest?.anomaly          ?? false;
+  const lstmAnomaly = lstmResult?.lstm_anomaly ?? false;
   const anyAnomaly  = ifAnomaly || lstmAnomaly;
+  const healthScore = computeHealth(latest, lstmResult);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Fetch latest sensor reading (includes IsolationForest result)
+        // 1. Sensor reading (includes IsolationForest result)
         const res     = await fetch(`${API}/sensor-data`);
         const reading = await res.json();
-
-        const point = {
+        const point   = {
           id:          reading.id,
           temperature: parseFloat(reading.temperature.toFixed(2)),
           vibration:   parseFloat(reading.vibration.toFixed(2)),
@@ -218,34 +306,32 @@ function App() {
           anomaly:     reading.anomaly,
         };
 
-        // 2. Fetch LSTM prediction in parallel
-        // 2. Fetch LSTM prediction (GET — reads last 10 readings from DB itself)
-let lstm = null;
-try {
-  const lstmRes = await fetch(`${API}/predict/lstm`);
-  lstm = await lstmRes.json();
-} catch {
-  // LSTM endpoint unavailable — degrade gracefully
-}
+        // 2. LSTM prediction (GET — reads last 10 from DB itself)
+        let lstm = null;
+        try {
+          const lstmRes = await fetch(`${API}/predict/lstm`);
+          lstm = await lstmRes.json();
+        } catch {
+          // degrade gracefully if LSTM endpoint unavailable
+        }
 
         setLatest(point);
         setLstmResult(lstm);
         setTotalReadings(r => r + 1);
         setData(prev => [...prev.slice(-40), point]);
 
-        // Log to anomaly timeline if either model flagged it
         const ifFlag   = point.anomaly;
-        const lstmFlag = lstm?.anomaly ?? false;
+        const lstmFlag = lstm?.lstm_anomaly ?? false;
         if (ifFlag || lstmFlag) {
           setAnomalyLog(prev => [
             ...prev.slice(-99),
             {
-              id:           point.id,
-              time:         ts(),
-              temperature:  point.temperature,
-              vibration:    point.vibration,
-              pressure:     point.pressure,
-              if_anomaly:   ifFlag,
+              id:          point.id,
+              time:        ts(),
+              temperature: point.temperature,
+              vibration:   point.vibration,
+              pressure:    point.pressure,
+              if_anomaly:  ifFlag,
               lstm_anomaly: lstmFlag,
             },
           ]);
@@ -277,11 +363,24 @@ try {
             Real-Time Predictive Maintenance · {totalReadings} readings
           </p>
         </div>
-
-        {/* Dual model status strip */}
         <div style={{ display: "flex", gap: 8 }}>
           <ModelEye label="ISOLATION FOREST" active={ifAnomaly}   sub="point anomaly" />
           <ModelEye label="LSTM AUTOENCODER" active={lstmAnomaly} sub="sequence anomaly" />
+        </div>
+      </div>
+
+      {/* ── Health score + stat cards row ── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: "1.25rem", flexWrap: "wrap" }}>
+        <HealthRing score={healthScore} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 260 }}>
+          <div style={{ display: "flex", gap: 10, flex: 1 }}>
+            <StatCard title="Temperature" value={fmt(latest?.temperature)} unit="°C"  color={C.temp} anomaly={anyAnomaly} lstmConf={lstmConf} />
+            <StatCard title="Vibration"   value={fmt(latest?.vibration)}   unit="g"   color={C.vib}  anomaly={anyAnomaly} lstmConf={lstmConf} />
+          </div>
+          <div style={{ display: "flex", gap: 10, flex: 1 }}>
+            <StatCard title="Pressure"  value={fmt(latest?.pressure)} unit="kPa"    color={C.pres} anomaly={anyAnomaly} lstmConf={lstmConf} />
+            <StatCard title="Anomalies" value={anomalyLog.length}     unit="flagged" color={C.warn} anomaly={anyAnomaly} />
+          </div>
         </div>
       </div>
 
@@ -289,7 +388,7 @@ try {
       {anyAnomaly && (
         <div style={{
           background: "#ff4d4d12", border: `1px solid ${C.borderHot}`,
-          borderRadius: 10, padding: "11px 16px", marginBottom: "1.5rem",
+          borderRadius: 10, padding: "11px 16px", marginBottom: "1.25rem",
           color: C.borderHot, fontSize: 13, display: "flex", alignItems: "center", gap: 8,
         }}>
           ⚠️ <strong>Anomaly detected</strong> —&nbsp;
@@ -299,14 +398,6 @@ try {
           &nbsp;Inspect system immediately.
         </div>
       )}
-
-      {/* ── Stat cards ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: "1.25rem", flexWrap: "wrap" }}>
-        <StatCard title="Temperature" value={fmt(latest?.temperature)} unit="°C"    color={C.temp} anomaly={anyAnomaly} lstmConf={lstmConf} />
-        <StatCard title="Vibration"   value={fmt(latest?.vibration)}   unit="g"     color={C.vib}  anomaly={anyAnomaly} lstmConf={lstmConf} />
-        <StatCard title="Pressure"    value={fmt(latest?.pressure)}    unit="kPa"   color={C.pres} anomaly={anyAnomaly} lstmConf={lstmConf} />
-        <StatCard title="Anomalies"   value={anomalyLog.length}        unit="flagged" color={C.warn} anomaly={anyAnomaly} />
-      </div>
 
       {/* ── Charts ── */}
       <SensorChart title="Temperature (°C)" dataKey="temperature" color={C.temp} data={data} />
@@ -318,7 +409,7 @@ try {
 
       {/* ── Footer ── */}
       <div style={{ textAlign: "center", color: "#2a2d3a", fontSize: 11, marginTop: "0.75rem" }}>
-        SENTINEL v0.2 · Sehaj Modi · IsolationForest + LSTM Autoencoder
+        SENTINEL v0.3 · Sehaj Modi · IsolationForest + LSTM Autoencoder
       </div>
 
     </div>
