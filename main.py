@@ -107,6 +107,18 @@ def get_sensor_data(db: Session = Depends(get_db)):
 def get_all_readings(db: Session = Depends(get_db)):
     return db.query(SensorReading).all()
 
+@app.get("/retrain")
+def retrain():
+    from lstm_model import train
+    db = SessionLocal()
+    readings = db.query(SensorReading).all()
+    db.close()
+    if len(readings) < 50:
+        return {"error": f"Not enough data. Have {len(readings)}, need 50+."}
+    sequence = np.array([[r.temperature, r.vibration, r.pressure] for r in readings])
+    train(sequence)
+    return {"status": "retrained", "readings_used": len(readings)}
+
 @app.get("/predict/lstm")
 def lstm_predict():
     db = SessionLocal()
