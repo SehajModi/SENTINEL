@@ -61,11 +61,10 @@ function computeHealth(point, lstmResult) {
   const vibScore  = 100 - (point.vibration / VIB_MAX) * 100;
   const presScore = 100 - Math.abs((point.pressure - 65) / 35) * 100;
   const sensorAvg = (tempScore + vibScore + presScore) / 3;
-  const ifPenalty   = point.anomaly ? 25 : 0;
-  const lstmPenalty = lstmResult?.lstm_anomaly
+  const ifPenalty       = point.anomaly ? 25 : 0;
+  const lstmPenalty     = lstmResult?.lstm_anomaly
     ? Math.min(25, Math.round((lstmResult.reconstruction_loss / MAX_LOSS) * 25))
     : 0;
-  // Both models agreeing is worse than either alone
   const agreementPenalty = (point.anomaly && lstmResult?.lstm_anomaly) ? 20 : 0;
   return Math.max(0, Math.min(100, Math.round(sensorAvg - ifPenalty - lstmPenalty - agreementPenalty)));
 }
@@ -281,10 +280,17 @@ const AnomalyTimeline = ({ events }) => (
                 <div style={{ fontVariantNumeric: "tabular-nums" }}>{e.time}</div>
                 <div>#{e.id}</div>
               </div>
-              <div style={{ flex: 1, display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <span style={{ color: C.temp }}>{fmt(e.temperature)} °C</span>
-                <span style={{ color: C.vib }}>{fmt(e.vibration)} g</span>
-                <span style={{ color: C.pres }}>{fmt(e.pressure)} kPa</span>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                  <span style={{ color: C.temp }}>{fmt(e.temperature)} °C</span>
+                  <span style={{ color: C.vib }}>{fmt(e.vibration)} g</span>
+                  <span style={{ color: C.pres }}>{fmt(e.pressure)} kPa</span>
+                </div>
+                {e.explanation && (
+                  <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>
+                    ↳ {e.explanation}
+                  </div>
+                )}
               </div>
               {e.reconstruction_loss != null && (
                 <span style={{ fontSize: 10, color: C.lstm, fontVariantNumeric: "tabular-nums" }}>
@@ -319,6 +325,7 @@ function App() {
   const [lstmResult,    setLstmResult]    = useState(null);
   const [anomalyLog,    setAnomalyLog]    = useState([]);
   const [totalReadings, setTotalReadings] = useState(0);
+  const [explanation,   setExplanation]   = useState(null);
 
   const lstmConf    = toConfidence(lstmResult?.reconstruction_loss);
   const ifAnomaly   = latest?.anomaly          ?? false;
@@ -353,8 +360,19 @@ function App() {
           point.reconstruction_loss = parseFloat(lstm.reconstruction_loss.toFixed(4));
         }
 
+        // Fetch explanation on every reading
+        let explainText = null;
+        try {
+          const explainRes  = await fetch(`${API}/explain`);
+          const explainData = await explainRes.json();
+          explainText = explainData.explanation ?? null;
+        } catch {
+          // degrade gracefully
+        }
+
         setLatest(point);
         setLstmResult(lstm);
+        setExplanation(explainText);
         setTotalReadings(r => r + 1);
         setData(prev => [...prev.slice(-40), point]);
 
@@ -372,6 +390,7 @@ function App() {
               reconstruction_loss: lstm?.reconstruction_loss ?? null,
               if_anomaly:          ifFlag,
               lstm_anomaly:        lstmFlag,
+              explanation:         explainText,
             },
           ]);
         }
@@ -385,13 +404,20 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Banner config based on severity
   const bannerConfig = {
-    CRITICAL: { bg: "#ff4d4d22", border: C.borderHot,  color: C.borderHot, icon: "🚨", msg: "Both models confirm anomaly — immediate inspection required." },
-    HIGH:     { bg: "#ffaa4d18", border: C.warn,        color: C.warn,      icon: "⚠️", msg: ifAnomaly ? "IsolationForest flagged a point outlier." : "LSTM detected a sequential deviation." },
-    LOW:      { bg: "#ff4d4d12", border: C.borderHot,   color: C.borderHot, icon: "⚠️", msg: ifAnomaly ? "IsolationForest flagged a point outlier." : "LSTM detected a sequential deviation." },
+    CRITICAL: { bg: "#ff4d4d22", border: C.borderHot, color: C.borderHot, icon: "🚨" },
+    HIGH:     { bg: "#ffaa4d18", border: C.warn,       color: C.warn,      icon: "⚠️" },
+    LOW:      { bg: "#ff4d4d12", border: C.borderHot,  color: C.borderHot, icon: "⚠️" },
   };
   const banner = severity ? bannerConfig[severity] : null;
+
+  const bannerMsg = explanation
+    ? explanation
+    : severity === "CRITICAL"
+      ? "Both models confirm anomaly — immediate inspection required."
+      : ifAnomaly
+      ? "IsolationForest flagged a point outlier."
+      : "LSTM detected a sequential deviation.";
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", padding: "1.75rem 2rem", color: "white", fontFamily: "'Inter', 'SF Pro Text', system-ui, sans-serif", maxWidth: 1140, margin: "0 auto" }}>
@@ -432,7 +458,7 @@ function App() {
           animation: isCritical ? "pulse 1.2s ease-in-out infinite" : "none",
         }}>
           {banner.icon}
-          <strong>[{severity}]</strong>&nbsp;{banner.msg}
+          <strong>[{severity}]</strong>&nbsp;{bannerMsg}
           {lstmResult?.reconstruction_loss != null && (
             <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.8 }}>
               loss: {Number(lstmResult.reconstruction_loss).toFixed(4)}
@@ -454,7 +480,7 @@ function App() {
 
       {/* Footer */}
       <div style={{ textAlign: "center", color: "#2a2d3a", fontSize: 11, marginTop: "0.75rem" }}>
-        SENTINEL v0.5 · Sehaj Modi · IsolationForest + LSTM Autoencoder
+        SENTINEL v0.6 · Sehaj Modi · IsolationForest + LSTM Autoencoder
       </div>
 
     </div>
