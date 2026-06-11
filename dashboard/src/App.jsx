@@ -21,7 +21,6 @@ const C = {
   lstm:      "#c084fc",
 };
 
-// Inject keyframes once
 if (!document.getElementById("sentinel-styles")) {
   const style = document.createElement("style");
   style.id = "sentinel-styles";
@@ -41,7 +40,6 @@ if (!document.getElementById("sentinel-styles")) {
 const fmt = (v, d = 2) => (v != null ? Number(v).toFixed(d) : "--");
 const ts  = () => new Date().toLocaleTimeString("en-IN", { hour12: false });
 
-// ── Severity ───────────────────────────────────────────────────────────────
 function anomalySeverity(ifAnomaly, lstmAnomaly, reconstructionLoss) {
   if (ifAnomaly && lstmAnomaly) return "CRITICAL";
   if (ifAnomaly || lstmAnomaly) {
@@ -50,7 +48,6 @@ function anomalySeverity(ifAnomaly, lstmAnomaly, reconstructionLoss) {
   return null;
 }
 
-// ── Health score ───────────────────────────────────────────────────────────
 const TEMP_MAX = 120;
 const VIB_MAX  = 2.5;
 const MAX_LOSS = 0.5;
@@ -61,8 +58,8 @@ function computeHealth(point, lstmResult) {
   const vibScore  = 100 - (point.vibration / VIB_MAX) * 100;
   const presScore = 100 - Math.abs((point.pressure - 65) / 35) * 100;
   const sensorAvg = (tempScore + vibScore + presScore) / 3;
-  const ifPenalty       = point.anomaly ? 25 : 0;
-  const lstmPenalty     = lstmResult?.lstm_anomaly
+  const ifPenalty        = point.anomaly ? 25 : 0;
+  const lstmPenalty      = lstmResult?.lstm_anomaly
     ? Math.min(25, Math.round((lstmResult.reconstruction_loss / MAX_LOSS) * 25))
     : 0;
   const agreementPenalty = (point.anomaly && lstmResult?.lstm_anomaly) ? 20 : 0;
@@ -83,7 +80,6 @@ function healthLabel(score) {
   return "CRITICAL";
 }
 
-// ── Health ring ────────────────────────────────────────────────────────────
 const HealthRing = ({ score, isCritical }) => {
   const color  = healthColor(score);
   const label  = healthLabel(score);
@@ -120,7 +116,6 @@ const HealthRing = ({ score, isCritical }) => {
   );
 };
 
-// ── Confidence bar ─────────────────────────────────────────────────────────
 const MAX_ERR = 0.5;
 const toConfidence = (err) =>
   err != null ? Math.min(100, Math.round((err / MAX_ERR) * 100)) : null;
@@ -138,7 +133,6 @@ const ConfidenceBar = ({ value }) => {
   );
 };
 
-// ── Model eye ──────────────────────────────────────────────────────────────
 const ModelEye = ({ label, active, sub }) => (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: C.card, border: `1px solid ${active ? C.borderHot : C.border}`, borderRadius: 10, padding: "10px 18px", minWidth: 100, transition: "border-color 0.3s" }}>
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -149,7 +143,6 @@ const ModelEye = ({ label, active, sub }) => (
   </div>
 );
 
-// ── Stat card ──────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
   <div style={{ background: C.card, border: `1px solid ${anomaly ? C.borderHot : C.border}`, borderRadius: 12, padding: "1.1rem 1.25rem", flex: 1, transition: "border-color 0.3s" }}>
     <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{title}</div>
@@ -165,7 +158,6 @@ const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
   </div>
 );
 
-// ── Sensor chart tooltip ───────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0];
@@ -178,7 +170,6 @@ const ChartTooltip = ({ active, payload }) => {
   );
 };
 
-// ── Sensor chart ───────────────────────────────────────────────────────────
 const SensorChart = ({ title, dataKey, color, data }) => {
   const anomalyIds = data.filter(d => d.anomaly).map(d => d.id);
   return (
@@ -200,7 +191,6 @@ const SensorChart = ({ title, dataKey, color, data }) => {
   );
 };
 
-// ── LSTM reconstruction loss chart ─────────────────────────────────────────
 const LSTM_THRESHOLD = 0.08;
 
 const LossTooltip = ({ active, payload }) => {
@@ -249,6 +239,38 @@ const LossChart = ({ data }) => {
             label={{ value: "threshold", position: "insideTopRight", fill: C.borderHot, fontSize: 10 }}
           />
           <Line type="monotone" dataKey="reconstruction_loss" stroke={C.lstm} dot={false} strokeWidth={1.5} activeDot={{ r: 4, fill: C.lstm }} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// ── Anomaly rate trend chart ───────────────────────────────────────────────
+const AnomalyRateChart = ({ data }) => {
+  const buckets = [];
+  for (let i = 0; i < data.length; i += 10) {
+    const slice = data.slice(i, i + 10);
+    const anomalyCount = slice.filter(d => d.anomaly).length;
+    const rate = Math.round((anomalyCount / slice.length) * 100);
+    buckets.push({ bucket: `#${slice[0]?.id}`, rate });
+  }
+  return (
+    <div style={{ background: C.card, borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
+        Anomaly Rate Trend <span style={{ color: C.muted, marginLeft: 8 }}>% per 10 readings</span>
+      </div>
+      <ResponsiveContainer width="100%" height={150}>
+        <LineChart data={buckets}>
+          <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+          <XAxis dataKey="bucket" stroke={C.muted} tick={{ fontSize: 10 }} />
+          <YAxis stroke={C.muted} tick={{ fontSize: 10 }} width={36} domain={[0, 100]} tickFormatter={v => `${v}%`} />
+          <Tooltip
+            contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            formatter={(v) => [`${v}%`, "Anomaly Rate"]}
+          />
+          <ReferenceLine y={5} stroke={C.warn} strokeDasharray="6 3" strokeWidth={1.5}
+            label={{ value: "5% baseline", position: "insideTopRight", fill: C.warn, fontSize: 10 }} />
+          <Line type="monotone" dataKey="rate" stroke={C.warn} dot={{ r: 3, fill: C.warn }} strokeWidth={2} activeDot={{ r: 5 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -360,7 +382,6 @@ function App() {
           point.reconstruction_loss = parseFloat(lstm.reconstruction_loss.toFixed(4));
         }
 
-        // Fetch explanation on every reading
         let explainText = null;
         try {
           const explainRes  = await fetch(`${API}/explain`);
@@ -474,6 +495,9 @@ function App() {
 
       {/* LSTM reconstruction loss chart */}
       <LossChart data={data} />
+
+      {/* Anomaly rate trend chart */}
+      <AnomalyRateChart data={data} />
 
       {/* Anomaly timeline */}
       <AnomalyTimeline events={anomalyLog} />
