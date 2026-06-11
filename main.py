@@ -241,3 +241,25 @@ def model_stats():
         }
     except Exception as e:
         return {"error": str(e)}
+    
+@app.get("/simulate/failure")
+def simulate_failure(db: Session = Depends(get_db)):
+    """Inject a guaranteed CRITICAL anomaly reading for demo purposes."""
+    reading = SensorReading(
+        timestamp=time.time(),
+        temperature=random.gauss(*ANOMALY_SPIKE["temperature"]),
+        vibration=random.gauss(*ANOMALY_SPIKE["vibration"]),
+        pressure=random.gauss(*ANOMALY_SPIKE["pressure"]),
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+    return {
+        "id":          reading.id,
+        "timestamp":   reading.timestamp,
+        "temperature": round(reading.temperature, 2),
+        "vibration":   round(reading.vibration, 2),
+        "pressure":    round(reading.pressure, 2),
+        "anomaly":     True,
+        "simulated":   True,
+    }
