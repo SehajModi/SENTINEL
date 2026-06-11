@@ -9,8 +9,7 @@
 - **Dashboard:** https://sentinel-three-lyart.vercel.app
 - **API:** https://sentinel-production-4d8e.up.railway.app
 
-## Demo GIF
-![SENTINEL Demo](demo.gif)
+![SENTINEL Demo](demo1.gif)
 
 ---
 
@@ -23,24 +22,46 @@ Unplanned equipment failure costs the manufacturing industry over $50B per year.
 ## 🧠 System Architecture
 
 ```
-Sensor Simulation (Gaussian noise + 5% spike injection)
-        ↓
-FastAPI Backend (Railway) — stores readings to SQLite
-        ↓
- ┌──────────────────────────────────┐
- │         Dual ML Engine           │
- │  IsolationForest  │  LSTM AE     │
- │  (point anomaly)  │  (sequence)  │
- └──────────────────────────────────┘
-        ↓                ↓
-   IF flag          reconstruction loss
-        ↘              ↙
-       Ensemble Severity Score
-       LOW → HIGH → CRITICAL
-        ↓
-   /explain → z-score root cause
-        ↓
-React Dashboard (Vercel) — live charts, health ring, anomaly log
+┌─────────────────────────────────────────────────────────┐
+│                    SENSOR LAYER                         │
+│   Gaussian simulation · 5% anomaly spike injection     │
+│   Temperature · Vibration · Pressure @ 2s intervals    │
+└────────────────────────┬────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────┐
+│              FASTAPI BACKEND  (Railway)                 │
+│   SQLite storage · IsolationForest training             │
+└──────────────┬──────────────────────┬───────────────────┘
+               ↓                      ↓
+┌──────────────────────┐  ┌───────────────────────────────┐
+│   ISOLATION FOREST   │  │      LSTM AUTOENCODER         │
+│   Point anomaly      │  │   Sequence anomaly            │
+│   Trained on all DB  │  │   10-step input window        │
+│   readings           │  │   Reconstruction loss signal  │
+└──────────┬───────────┘  └──────────────┬────────────────┘
+           │   IF flag                    │   loss > 0.15
+           └──────────────┬──────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│              ENSEMBLE SEVERITY ENGINE                   │
+│   LOW  → one model flagging, loss < 0.15               │
+│   HIGH → one model flagging, loss ≥ 0.15               │
+│   CRITICAL → both models agree simultaneously          │
+│   Health score: 0–100 composite (sensor + IF + LSTM)   │
+└────────────────────────┬────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────┐
+│              EXPLAINABILITY  /explain                   │
+│   Z-score per sensor vs baseline                       │
+│   "temperature was 3.2σ above normal baseline"         │
+└────────────────────────┬────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────┐
+│            REACT DASHBOARD  (Vercel)                    │
+│   Health ring · Sensor charts · LSTM loss chart        │
+│   Anomaly rate trend · Severity log · CSV export       │
+│   Pulsing CRITICAL banner with root cause text         │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -50,26 +71,26 @@ React Dashboard (Vercel) — live charts, health ring, anomaly log
 ### IsolationForest
 - Trained incrementally on all readings in DB
 - Detects **point anomalies** — single readings outside the normal distribution
-- Fast, no history required
+- Fast, stateless, no history required
 
 ### LSTM Autoencoder
 - Trained on 2000+ realistic Gaussian sensor readings
 - Input: sequences of 10 consecutive readings (temperature, vibration, pressure)
 - Learns to reconstruct normal patterns; flags deviations via **reconstruction loss**
 - Catches **gradual failures and temporal drift** that point-based models miss
-- Threshold: `loss > 0.05` → anomaly
+- Threshold: `loss > 0.15` → anomaly
 
 ### Ensemble Severity
-| Severity | Condition |
-|----------|-----------|
-| LOW | One model flagging, loss < 0.15 |
-| HIGH | One model flagging, loss ≥ 0.15 |
-| CRITICAL | Both IF + LSTM agree simultaneously |
+| Severity | Condition | Health Penalty |
+|----------|-----------|----------------|
+| LOW | One model flagging, loss < 0.15 | −25 |
+| HIGH | One model flagging, loss ≥ 0.15 | −25 to −50 |
+| CRITICAL | Both IF + LSTM agree simultaneously | −70 |
 
-CRITICAL events apply an additional −20 penalty to the composite health score.
+CRITICAL applies an additional −20 agreement penalty on top of individual model penalties.
 
 ### Explainability — `/explain`
-On every anomaly, SENTINEL computes z-scores across all three sensors against known baselines and identifies the primary failure cause:
+On every reading, SENTINEL computes z-scores across all three sensors against known baselines and identifies the primary failure cause:
 ```json
 {
   "primary_cause": "temperature",
@@ -82,17 +103,22 @@ On every anomaly, SENTINEL computes z-scores across all three sensors against kn
   }
 }
 ```
+This explanation surfaces live in the dashboard banner and per-event in the anomaly log.
 
 ---
 
-## 📊 Dashboard — v0.5
+## 📊 Dashboard — v0.7
 
-- **Composite health ring** (0–100) — weighted combination of sensor range, IF flag, and LSTM reconstruction loss
-- **Dual model status indicators** — live green/red for each model independently
-- **LSTM reconstruction loss chart** — purple time-series with threshold reference line
-- **Severity-tagged anomaly log** — LOW / HIGH / CRITICAL badges per event with per-sensor values and reconstruction loss
-- **Pulsing CRITICAL banner** — animated alert when both models agree, with live loss readout
-- **Red reference lines** on sensor charts at anomaly timestamps
+| Feature | Description |
+|---------|-------------|
+| Composite health ring | 0–100 score, weighted sensor + IF + LSTM |
+| Dual model indicators | Live green/red per model, independent |
+| Sensor charts | Temperature, vibration, pressure with anomaly reference lines |
+| LSTM loss chart | Purple time-series, threshold line, fixed Y-axis domain |
+| Anomaly rate trend | % flagged per 10-reading window, degradation visibility |
+| Severity-tagged log | LOW / HIGH / CRITICAL badges, z-score explanation per event |
+| CRITICAL banner | Pulsing red animation, root cause text, live loss readout |
+| CSV export | One-click download of full anomaly log with all fields |
 
 ---
 
@@ -147,14 +173,14 @@ npm run dev
 - [x] Dual-model ensemble severity scoring (LOW / HIGH / CRITICAL)
 - [x] Composite health score (0–100)
 - [x] Z-score explainability endpoint
+- [x] Explainability wired into live dashboard banner + anomaly log
+- [x] Anomaly rate trend chart
+- [x] CSV export of anomaly log
 - [x] Cloud deployment (Railway + Vercel)
-- [ ] Wire `/explain` output into live dashboard banner
-- [ ] Anomaly rate trend chart (degradation over time)
-- [ ] Export anomaly log as CSV
-- [ ] Persistent storage via Railway Volume (SQLite survival across redeploys)
 - [ ] ESP32 hardware integration
+- [ ] Persistent storage via Railway Volume
 - [ ] Edge deployment (Raspberry Pi / STM32)
 
 ---
 
-*Built by Sehaj Modi · B.Tech Instrumentation & Control Engineering, NIT Jalandhar · SENTINEL v0.5*
+*Built by Sehaj Modi · B.Tech Instrumentation & Control Engineering, NIT Jalandhar · SENTINEL v0.7*
