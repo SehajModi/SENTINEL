@@ -14,13 +14,14 @@ SCALER_PATH = os.path.join(DATA_DIR, "lstm_scaler.pkl")
 
 def build_lstm_autoencoder():
     model = Sequential([
-        LSTM(64, input_shape=(SEQUENCE_LENGTH, FEATURES), return_sequences=False),
+        LSTM(32, input_shape=(SEQUENCE_LENGTH, FEATURES), return_sequences=False),
         RepeatVector(SEQUENCE_LENGTH),
-        LSTM(64, return_sequences=True),
+        LSTM(16, return_sequences=True),
         TimeDistributed(Dense(FEATURES))
     ])
     model.compile(optimizer='adam', loss='mae')
     return model
+
 
 def train(data: np.ndarray):
     os.makedirs(DATA_DIR, exist_ok=True)
