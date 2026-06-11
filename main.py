@@ -99,7 +99,7 @@ def get_sensor_data(db: Session = Depends(get_db)):
     if len(all_readings) >= 10:
         train_model(all_readings)
 
-    is_anomaly = detect_anomaly(...) and is_physically_anomalous(temp, vib, pres)
+    is_anomaly = detect_anomaly(temp, vib, pres) and is_physically_anomalous(temp, vib, pres)
 
     return {
         "id":          reading.id,
