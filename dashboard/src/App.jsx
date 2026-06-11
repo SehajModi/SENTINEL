@@ -413,7 +413,7 @@ function App() {
   const [anomalyLog,    setAnomalyLog]    = useState([]);
   const [totalReadings, setTotalReadings] = useState(0);
   const [explanation,   setExplanation]   = useState(null);
-  const [modelStats,    setModelStats]    = useState(null);
+  const [uptime, setUptime] = useState(0);
 
   const lstmConf    = toConfidence(lstmResult?.reconstruction_loss);
   const ifAnomaly   = latest?.anomaly          ?? false;
@@ -429,6 +429,12 @@ function App() {
       .then(d => { if (!d.error) setModelStats(d); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+  const start = Date.now();
+  const tick = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000);
+  return () => clearInterval(tick);
+}, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -514,7 +520,7 @@ function App() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#e8eaf0" }}>🛡️ SENTINEL</h1>
-          <p style={{ margin: "3px 0 0", color: C.muted, fontSize: 12 }}>Real-Time Predictive Maintenance · {totalReadings} readings</p>
+          <p style={{ margin: "3px 0 0", color: C.muted, fontSize: 12 }}>Real-Time Predictive Maintenance · {totalReadings} readings · uptime {Math.floor(uptime/3600)}h {Math.floor((uptime%3600)/60)}m {uptime%60}s</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <ModelEye label="ISOLATION FOREST" active={ifAnomaly}   sub="point anomaly" />
