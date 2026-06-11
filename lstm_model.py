@@ -4,6 +4,27 @@ from tensorflow.keras.layers import LSTM, Dense, RepeatVector, TimeDistributed
 from sklearn.preprocessing import MinMaxScaler
 import pickle
 import os
+from tensorflow.keras.callbacks import EarlyStopping
+
+def train(data: np.ndarray):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    scaler = MinMaxScaler()
+    data_scaled = scaler.fit_transform(data)
+
+    sequences = []
+    for i in range(len(data_scaled) - SEQUENCE_LENGTH):
+        sequences.append(data_scaled[i:i+SEQUENCE_LENGTH])
+    X = np.array(sequences)
+
+    model = build_lstm_autoencoder()
+    early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+    model.fit(X, X, epochs=50, batch_size=32, validation_split=0.1, 
+              callbacks=[early_stop], verbose=1)
+
+    model.save(MODEL_PATH)
+    with open(SCALER_PATH, "wb") as f:
+        pickle.dump(scaler, f)
+    print("LSTM model saved.")
 
 SEQUENCE_LENGTH = 10
 FEATURES = 3  # temperature, vibration, pressure
