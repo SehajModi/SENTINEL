@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.ensemble import IsolationForest
 
-model = IsolationForest(contamination=0.1, random_state=42)
+model = IsolationForest(contamination=0.05, random_state=42)
 is_trained = False
 
 def train_model(readings):

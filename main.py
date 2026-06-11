@@ -41,6 +41,13 @@ ANOMALY_SPIKE = {
     "pressure":    (28.0,  3.0),  # sudden pressure drop
 }
 
+def is_physically_anomalous(temp, vib, pres):
+    """Only flag if reading is meaningfully outside normal operating band."""
+    temp_ok = 60.0 <= temp <= 90.0
+    vib_ok  = 0.3 <= vib <= 1.0
+    pres_ok = 50.0 <= pres <= 80.0
+    return not (temp_ok and vib_ok and pres_ok)
+
 def generate_reading():
     """
     Returns (temperature, vibration, pressure, is_injected_anomaly).
@@ -92,7 +99,7 @@ def get_sensor_data(db: Session = Depends(get_db)):
     if len(all_readings) >= 10:
         train_model(all_readings)
 
-    is_anomaly = detect_anomaly(reading.temperature, reading.vibration, reading.pressure)
+    is_anomaly = detect_anomaly(...) and is_physically_anomalous(temp, vib, pres)
 
     return {
         "id":          reading.id,
