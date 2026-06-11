@@ -3,9 +3,14 @@ from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dense, RepeatVector, TimeDistributed
 from sklearn.preprocessing import MinMaxScaler
 import pickle
+import os
 
 SEQUENCE_LENGTH = 10
 FEATURES = 3  # temperature, vibration, pressure
+
+DATA_DIR = "/app/data"
+MODEL_PATH = os.path.join(DATA_DIR, "lstm_model.keras")
+SCALER_PATH = os.path.join(DATA_DIR, "lstm_scaler.pkl")
 
 def build_lstm_autoencoder():
     model = Sequential([
@@ -18,6 +23,7 @@ def build_lstm_autoencoder():
     return model
 
 def train(data: np.ndarray):
+    os.makedirs(DATA_DIR, exist_ok=True)
     scaler = MinMaxScaler()
     data_scaled = scaler.fit_transform(data)
 
@@ -29,14 +35,14 @@ def train(data: np.ndarray):
     model = build_lstm_autoencoder()
     model.fit(X, X, epochs=20, batch_size=32, validation_split=0.1, verbose=1)
 
-    model.save("lstm_model.keras")
-    with open("lstm_scaler.pkl", "wb") as f:
+    model.save(MODEL_PATH)
+    with open(SCALER_PATH, "wb") as f:
         pickle.dump(scaler, f)
     print("LSTM model saved.")
 
 def predict_anomaly(sequence: np.ndarray, threshold=0.10):
-    model = load_model("lstm_model.keras")
-    with open("lstm_scaler.pkl", "rb") as f:
+    model = load_model(MODEL_PATH)
+    with open(SCALER_PATH, "rb") as f:
         scaler = pickle.load(f)
 
     seq_scaled = scaler.transform(sequence)
