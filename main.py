@@ -6,6 +6,8 @@ import time
 from anomaly import train_model, detect_anomaly
 from lstm_model import predict_anomaly
 import numpy as np
+from lstm_model import predict_anomaly, get_model_stats
+
 
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
@@ -172,6 +174,20 @@ BASELINES = {
     "vibration":   (0.6, 0.3),
     "pressure":    (65, 10),
 }
+
+
+@app.get("/model-stats")
+def model_stats():
+    stats = get_model_stats()
+    if not stats:
+        return {"error": "No stats available — retrain the model first"}
+    return {
+        "loss_mean": round(stats["mean"], 4),
+        "loss_std":  round(stats["std"], 4),
+        "loss_p95":  round(stats["p95"], 4),
+        "loss_p99":  round(stats["p99"], 4),
+        "trained_on_n_sequences": stats["n"],
+    }
 
 @app.get("/explain")
 def explain(db: Session = Depends(get_db)):
