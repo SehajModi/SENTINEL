@@ -414,6 +414,7 @@ function App() {
   const [totalReadings, setTotalReadings] = useState(0);
   const [explanation,   setExplanation]   = useState(null);
   const [uptime, setUptime] = useState(0);
+  const [modelStats, setModelStats] = useState(null);
 
   const lstmConf    = toConfidence(lstmResult?.reconstruction_loss);
   const ifAnomaly   = latest?.anomaly          ?? false;
