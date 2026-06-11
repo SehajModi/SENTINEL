@@ -1,13 +1,22 @@
 # 🛡️ SENTINEL
 ### Real-Time Predictive Maintenance System
 
-> An IoT-inspired edge intelligence system that monitors industrial machine health in real-time, detects anomalies using dual ML models with ensemble severity scoring, and explains failure causes using statistical deviation analysis.
+> Industrial machines fail without warning — costing billions in unplanned downtime annually. SENTINEL monitors sensor streams in real-time, runs a dual ML engine (IsolationForest + LSTM Autoencoder) to detect both sudden spikes and gradual drift, and explains failure causes using statistical deviation analysis.
 
 ---
 
 ## 🔥 Live Demo
 - **Dashboard:** https://sentinel-three-lyart.vercel.app
 - **API:** https://sentinel-production-4d8e.up.railway.app
+
+## Demo GIF
+![SENTINEL Demo](demo.gif)
+
+---
+
+## 💡 Why This Matters
+
+Unplanned equipment failure costs the manufacturing industry over $50B per year. Traditional threshold-based alarms miss gradual degradation — a bearing that slowly heats up over hours before catastrophic failure. SENTINEL combines a fast point-anomaly detector (IsolationForest) with a sequence-aware LSTM Autoencoder to catch both failure modes, assign severity, and pinpoint the root cause sensor — the same architecture used in real industrial condition monitoring systems.
 
 ---
 
@@ -142,9 +151,10 @@ npm run dev
 - [ ] Wire `/explain` output into live dashboard banner
 - [ ] Anomaly rate trend chart (degradation over time)
 - [ ] Export anomaly log as CSV
+- [ ] Persistent storage via Railway Volume (SQLite survival across redeploys)
 - [ ] ESP32 hardware integration
 - [ ] Edge deployment (Raspberry Pi / STM32)
 
 ---
 
-*Built by Sehaj Modi · SENTINEL v0.5 · IsolationForest + LSTM Autoencoder*
+*Built by Sehaj Modi · B.Tech Instrumentation & Control Engineering, NIT Jalandhar · SENTINEL v0.5*
