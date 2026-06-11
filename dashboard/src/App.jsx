@@ -106,7 +106,6 @@ function healthLabel(score) {
   return "CRITICAL";
 }
 
-// ── Health ring ────────────────────────────────────────────────────────────
 const HealthRing = ({ score, isCritical }) => {
   const color  = healthColor(score);
   const label  = healthLabel(score);
@@ -138,7 +137,6 @@ const HealthRing = ({ score, isCritical }) => {
   );
 };
 
-// ── Confidence bar ─────────────────────────────────────────────────────────
 const MAX_ERR = 0.5;
 const toConfidence = (err) =>
   err != null ? Math.min(100, Math.round((err / MAX_ERR) * 100)) : null;
@@ -156,7 +154,6 @@ const ConfidenceBar = ({ value }) => {
   );
 };
 
-// ── Model eye ──────────────────────────────────────────────────────────────
 const ModelEye = ({ label, active, sub }) => (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: C.card, border: `1px solid ${active ? C.borderHot : C.border}`, borderRadius: 10, padding: "10px 18px", minWidth: 100, transition: "border-color 0.3s" }}>
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -167,7 +164,6 @@ const ModelEye = ({ label, active, sub }) => (
   </div>
 );
 
-// ── Stat card ──────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
   <div style={{ background: C.card, border: `1px solid ${anomaly ? C.borderHot : C.border}`, borderRadius: 12, padding: "1.1rem 1.25rem", flex: 1, transition: "border-color 0.3s" }}>
     <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{title}</div>
@@ -183,7 +179,6 @@ const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
   </div>
 );
 
-// ── Model stats strip ──────────────────────────────────────────────────────
 const ModelStatsStrip = ({ stats, currentLoss, lossZScore }) => {
   if (!stats) return null;
   const zColor = lossZScore == null ? C.muted
@@ -196,15 +191,8 @@ const ModelStatsStrip = ({ stats, currentLoss, lossZScore }) => {
       padding: "8px 14px", marginTop: 10,
       display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
     }}>
-      <span style={{ fontSize: 10, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em", flexShrink: 0 }}>
-        Model Baseline
-      </span>
-      {[
-        ["mean", stats.loss_mean],
-        ["std",  stats.loss_std],
-        ["p95",  stats.loss_p95],
-        ["p99",  stats.loss_p99],
-      ].map(([label, val]) => (
+      <span style={{ fontSize: 10, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em", flexShrink: 0 }}>Model Baseline</span>
+      {[["mean", stats.loss_mean], ["std", stats.loss_std], ["p95", stats.loss_p95], ["p99", stats.loss_p99]].map(([label, val]) => (
         <div key={label} style={{ display: "flex", gap: 5, alignItems: "baseline" }}>
           <span style={{ fontSize: 10, color: C.muted }}>{label}</span>
           <span style={{ fontSize: 11, color: C.lstm, fontVariantNumeric: "tabular-nums" }}>{Number(val).toFixed(4)}</span>
@@ -224,7 +212,6 @@ const ModelStatsStrip = ({ stats, currentLoss, lossZScore }) => {
   );
 };
 
-// ── Chart tooltip ──────────────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0];
@@ -237,7 +224,6 @@ const ChartTooltip = ({ active, payload }) => {
   );
 };
 
-// ── Sensor chart ───────────────────────────────────────────────────────────
 const SensorChart = ({ title, dataKey, color, data }) => {
   const anomalyIds = data.filter(d => d.anomaly).map(d => d.id);
   return (
@@ -259,7 +245,6 @@ const SensorChart = ({ title, dataKey, color, data }) => {
   );
 };
 
-// ── LSTM loss chart ────────────────────────────────────────────────────────
 const LSTM_THRESHOLD = 0.15;
 
 const LossTooltip = ({ active, payload }) => {
@@ -314,7 +299,6 @@ const LossChart = ({ data, modelStats, currentLossZScore }) => {
   );
 };
 
-// ── Anomaly rate chart ─────────────────────────────────────────────────────
 const AnomalyRateChart = ({ data }) => {
   const buckets = [];
   for (let i = 0; i < data.length; i += 10) {
@@ -343,7 +327,6 @@ const AnomalyRateChart = ({ data }) => {
   );
 };
 
-// ── CSV export ─────────────────────────────────────────────────────────────
 function exportCSV(events) {
   const headers = ["id", "time", "temperature", "vibration", "pressure", "reconstruction_loss", "if_anomaly", "lstm_anomaly", "severity", "explanation"];
   const rows = events.map(e => {
@@ -360,7 +343,6 @@ function exportCSV(events) {
   URL.revokeObjectURL(url);
 }
 
-// ── Anomaly timeline ───────────────────────────────────────────────────────
 const AnomalyTimeline = ({ events }) => (
   <div style={{ background: C.card, borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: 12 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -372,7 +354,6 @@ const AnomalyTimeline = ({ events }) => (
             fontSize: 10, padding: "3px 10px", borderRadius: 5,
             background: "#1e2740", border: `1px solid ${C.border}`,
             color: C.label, cursor: "pointer", letterSpacing: "0.05em",
-            transition: "border-color 0.2s, color 0.2s",
           }}
             onMouseEnter={e => { e.target.style.borderColor = C.lstm; e.target.style.color = C.lstm; }}
             onMouseLeave={e => { e.target.style.borderColor = C.border; e.target.style.color = C.label; }}
@@ -425,7 +406,6 @@ const AnomalyTimeline = ({ events }) => (
   </div>
 );
 
-// ── Main app ───────────────────────────────────────────────────────────────
 function App() {
   const [data,          setData]          = useState([]);
   const [latest,        setLatest]        = useState(null);
@@ -443,7 +423,6 @@ function App() {
   const isCritical  = severity === "CRITICAL";
   const healthScore = computeHealth(latest, lstmResult);
 
-  // Fetch model stats once on mount
   useEffect(() => {
     fetch(`${API}/model-stats`)
       .then(r => r.json())
@@ -490,6 +469,8 @@ function App() {
         const ifFlag   = point.anomaly;
         const lstmFlag = lstm?.lstm_anomaly ?? false;
         if (ifFlag || lstmFlag) {
+          const sev = anomalySeverity(ifFlag, lstmFlag, lstm?.reconstruction_loss);
+          playAlert(sev);
           setAnomalyLog(prev => [...prev.slice(-99), {
             id: point.id, time: ts(),
             temperature: point.temperature, vibration: point.vibration, pressure: point.pressure,
