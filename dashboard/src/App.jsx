@@ -80,6 +80,7 @@ function healthLabel(score) {
   return "CRITICAL";
 }
 
+// ── Health ring ────────────────────────────────────────────────────────────
 const HealthRing = ({ score, isCritical }) => {
   const color  = healthColor(score);
   const label  = healthLabel(score);
@@ -88,14 +89,9 @@ const HealthRing = ({ score, isCritical }) => {
   const dash   = score != null ? (score / 100) * circ : 0;
   return (
     <div style={{
-      background: C.card,
-      border: `1px solid ${isCritical ? C.borderHot : C.border}`,
-      borderRadius: 12,
-      padding: "1.1rem 1.5rem",
-      display: "flex",
-      alignItems: "center",
-      gap: 20,
-      transition: "border-color 0.3s",
+      background: C.card, border: `1px solid ${isCritical ? C.borderHot : C.border}`,
+      borderRadius: 12, padding: "1.1rem 1.5rem", display: "flex", alignItems: "center",
+      gap: 20, transition: "border-color 0.3s",
       animation: isCritical ? "pulse 1.2s ease-in-out infinite" : "none",
     }}>
       <svg width={96} height={96} style={{ flexShrink: 0, animation: isCritical ? "ringPulse 1.2s ease-in-out infinite" : "none" }}>
@@ -116,6 +112,7 @@ const HealthRing = ({ score, isCritical }) => {
   );
 };
 
+// ── Confidence bar ─────────────────────────────────────────────────────────
 const MAX_ERR = 0.5;
 const toConfidence = (err) =>
   err != null ? Math.min(100, Math.round((err / MAX_ERR) * 100)) : null;
@@ -133,6 +130,7 @@ const ConfidenceBar = ({ value }) => {
   );
 };
 
+// ── Model eye ──────────────────────────────────────────────────────────────
 const ModelEye = ({ label, active, sub }) => (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: C.card, border: `1px solid ${active ? C.borderHot : C.border}`, borderRadius: 10, padding: "10px 18px", minWidth: 100, transition: "border-color 0.3s" }}>
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -143,6 +141,7 @@ const ModelEye = ({ label, active, sub }) => (
   </div>
 );
 
+// ── Stat card ──────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
   <div style={{ background: C.card, border: `1px solid ${anomaly ? C.borderHot : C.border}`, borderRadius: 12, padding: "1.1rem 1.25rem", flex: 1, transition: "border-color 0.3s" }}>
     <div style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{title}</div>
@@ -158,6 +157,48 @@ const StatCard = ({ title, value, unit, color, anomaly, lstmConf }) => (
   </div>
 );
 
+// ── Model stats strip ──────────────────────────────────────────────────────
+const ModelStatsStrip = ({ stats, currentLoss, lossZScore }) => {
+  if (!stats) return null;
+  const zColor = lossZScore == null ? C.muted
+    : lossZScore > 5 ? C.borderHot
+    : lossZScore > 2 ? C.warn
+    : "#4dff91";
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+      padding: "8px 14px", marginTop: 10,
+      display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
+    }}>
+      <span style={{ fontSize: 10, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em", flexShrink: 0 }}>
+        Model Baseline
+      </span>
+      {[
+        ["mean", stats.loss_mean],
+        ["std",  stats.loss_std],
+        ["p95",  stats.loss_p95],
+        ["p99",  stats.loss_p99],
+      ].map(([label, val]) => (
+        <div key={label} style={{ display: "flex", gap: 5, alignItems: "baseline" }}>
+          <span style={{ fontSize: 10, color: C.muted }}>{label}</span>
+          <span style={{ fontSize: 11, color: C.lstm, fontVariantNumeric: "tabular-nums" }}>{Number(val).toFixed(4)}</span>
+        </div>
+      ))}
+      <div style={{ marginLeft: "auto", display: "flex", gap: 5, alignItems: "baseline" }}>
+        <span style={{ fontSize: 10, color: C.muted }}>current z-score</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: zColor, fontVariantNumeric: "tabular-nums" }}>
+          {lossZScore != null ? `${lossZScore > 0 ? "+" : ""}${lossZScore}σ` : "--"}
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 5, alignItems: "baseline" }}>
+        <span style={{ fontSize: 10, color: C.muted }}>trained on</span>
+        <span style={{ fontSize: 11, color: C.label }}>{stats.trained_on_n_sequences?.toLocaleString()} sequences</span>
+      </div>
+    </div>
+  );
+};
+
+// ── Chart tooltip ──────────────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0];
@@ -170,6 +211,7 @@ const ChartTooltip = ({ active, payload }) => {
   );
 };
 
+// ── Sensor chart ───────────────────────────────────────────────────────────
 const SensorChart = ({ title, dataKey, color, data }) => {
   const anomalyIds = data.filter(d => d.anomaly).map(d => d.id);
   return (
@@ -191,6 +233,7 @@ const SensorChart = ({ title, dataKey, color, data }) => {
   );
 };
 
+// ── LSTM loss chart ────────────────────────────────────────────────────────
 const LSTM_THRESHOLD = 0.15;
 
 const LossTooltip = ({ active, payload }) => {
@@ -207,7 +250,7 @@ const LossTooltip = ({ active, payload }) => {
   );
 };
 
-const LossChart = ({ data }) => {
+const LossChart = ({ data, modelStats, currentLossZScore }) => {
   const lossData = data.filter(d => d.reconstruction_loss != null);
   const currentLoss = lossData[lossData.length - 1]?.reconstruction_loss;
   const aboveThreshold = currentLoss > LSTM_THRESHOLD;
@@ -229,28 +272,28 @@ const LossChart = ({ data }) => {
         <LineChart data={lossData}>
           <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
           <XAxis dataKey="id" stroke={C.muted} tick={{ fontSize: 10 }} />
-          <YAxis stroke={C.muted} tick={{ fontSize: 10 }} width={44} tickFormatter={v => v.toFixed(2)} />
+          <YAxis stroke={C.muted} tick={{ fontSize: 10 }} width={44} tickFormatter={v => v.toFixed(2)} domain={[0, 0.25]} />
           <Tooltip content={<LossTooltip />} />
-          <ReferenceLine
-            y={LSTM_THRESHOLD}
-            stroke={C.borderHot}
-            strokeDasharray="6 3"
-            strokeWidth={1.5}
-            label={{ value: "threshold", position: "insideTopRight", fill: C.borderHot, fontSize: 10 }}
-          />
+          <ReferenceLine y={LSTM_THRESHOLD} stroke={C.borderHot} strokeDasharray="6 3" strokeWidth={1.5}
+            label={{ value: "threshold", position: "insideTopRight", fill: C.borderHot, fontSize: 10 }} />
+          {modelStats && (
+            <ReferenceLine y={modelStats.loss_mean} stroke={C.lstm} strokeDasharray="4 4" strokeOpacity={0.5} strokeWidth={1}
+              label={{ value: "baseline mean", position: "insideBottomRight", fill: C.lstm, fontSize: 9 }} />
+          )}
           <Line type="monotone" dataKey="reconstruction_loss" stroke={C.lstm} dot={false} strokeWidth={1.5} activeDot={{ r: 4, fill: C.lstm }} />
         </LineChart>
       </ResponsiveContainer>
+      <ModelStatsStrip stats={modelStats} currentLoss={currentLoss} lossZScore={currentLossZScore} />
     </div>
   );
 };
 
+// ── Anomaly rate chart ─────────────────────────────────────────────────────
 const AnomalyRateChart = ({ data }) => {
   const buckets = [];
   for (let i = 0; i < data.length; i += 10) {
     const slice = data.slice(i, i + 10);
-    const anomalyCount = slice.filter(d => d.anomaly).length;
-    const rate = Math.round((anomalyCount / slice.length) * 100);
+    const rate = Math.round((slice.filter(d => d.anomaly).length / slice.length) * 100);
     buckets.push({ bucket: `#${slice[0]?.id}`, rate });
   }
   return (
@@ -263,10 +306,8 @@ const AnomalyRateChart = ({ data }) => {
           <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
           <XAxis dataKey="bucket" stroke={C.muted} tick={{ fontSize: 10 }} />
           <YAxis stroke={C.muted} tick={{ fontSize: 10 }} width={36} domain={[0, 100]} tickFormatter={v => `${v}%`} />
-          <Tooltip
-            contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
-            formatter={(v) => [`${v}%`, "Anomaly Rate"]}
-          />
+          <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            formatter={(v) => [`${v}%`, "Anomaly Rate"]} />
           <ReferenceLine y={5} stroke={C.warn} strokeDasharray="6 3" strokeWidth={1.5}
             label={{ value: "5% baseline", position: "insideTopRight", fill: C.warn, fontSize: 10 }} />
           <Line type="monotone" dataKey="rate" stroke={C.warn} dot={{ r: 3, fill: C.warn }} strokeWidth={2} activeDot={{ r: 5 }} />
@@ -276,30 +317,24 @@ const AnomalyRateChart = ({ data }) => {
   );
 };
 
+// ── CSV export ─────────────────────────────────────────────────────────────
 function exportCSV(events) {
   const headers = ["id", "time", "temperature", "vibration", "pressure", "reconstruction_loss", "if_anomaly", "lstm_anomaly", "severity", "explanation"];
   const rows = events.map(e => {
     const sev = anomalySeverity(e.if_anomaly, e.lstm_anomaly, e.reconstruction_loss);
-    return [
-      e.id, e.time,
-      e.temperature, e.vibration, e.pressure,
-      e.reconstruction_loss ?? "",
-      e.if_anomaly ? "1" : "0",
-      e.lstm_anomaly ? "1" : "0",
-      sev ?? "",
-      e.explanation ?? "",
-    ].join(",");
+    return [e.id, e.time, e.temperature, e.vibration, e.pressure,
+      e.reconstruction_loss ?? "", e.if_anomaly ? "1" : "0", e.lstm_anomaly ? "1" : "0",
+      sev ?? "", e.explanation ?? ""].join(",");
   });
-  const csv = [headers.join(","), ...rows].join("\n");
+  const csv  = [headers.join(","), ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
-  a.href = url;
-  a.download = `sentinel-anomalies-${Date.now()}.csv`;
-  a.click();
+  a.href = url; a.download = `sentinel-anomalies-${Date.now()}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
+// ── Anomaly timeline ───────────────────────────────────────────────────────
 const AnomalyTimeline = ({ events }) => (
   <div style={{ background: C.card, borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: 12 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -307,19 +342,15 @@ const AnomalyTimeline = ({ events }) => (
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 11, color: C.muted }}>{events.length} events</span>
         {events.length > 0 && (
-          <button
-            onClick={() => exportCSV(events)}
-            style={{
-              fontSize: 10, padding: "3px 10px", borderRadius: 5,
-              background: "#1e2740", border: `1px solid ${C.border}`,
-              color: C.label, cursor: "pointer", letterSpacing: "0.05em",
-              transition: "border-color 0.2s, color 0.2s",
-            }}
+          <button onClick={() => exportCSV(events)} style={{
+            fontSize: 10, padding: "3px 10px", borderRadius: 5,
+            background: "#1e2740", border: `1px solid ${C.border}`,
+            color: C.label, cursor: "pointer", letterSpacing: "0.05em",
+            transition: "border-color 0.2s, color 0.2s",
+          }}
             onMouseEnter={e => { e.target.style.borderColor = C.lstm; e.target.style.color = C.lstm; }}
             onMouseLeave={e => { e.target.style.borderColor = C.border; e.target.style.color = C.label; }}
-          >
-            ↓ EXPORT CSV
-          </button>
+          >↓ EXPORT CSV</button>
         )}
       </div>
     </div>
@@ -332,10 +363,9 @@ const AnomalyTimeline = ({ events }) => (
           const sevColor = sev === "CRITICAL" ? C.borderHot : sev === "HIGH" ? C.warn : C.lstm;
           return (
             <div key={i} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: C.surface, borderRadius: 8, padding: "9px 12px",
-              border: `1px solid ${sev === "CRITICAL" ? C.borderHot : C.border}`,
-              fontSize: 12,
+              display: "flex", alignItems: "center", gap: 12, background: C.surface,
+              borderRadius: 8, padding: "9px 12px",
+              border: `1px solid ${sev === "CRITICAL" ? C.borderHot : C.border}`, fontSize: 12,
             }}>
               <div style={{ minWidth: 64, color: C.muted, fontSize: 10, lineHeight: 1.5 }}>
                 <div style={{ fontVariantNumeric: "tabular-nums" }}>{e.time}</div>
@@ -348,9 +378,7 @@ const AnomalyTimeline = ({ events }) => (
                   <span style={{ color: C.pres }}>{fmt(e.pressure)} kPa</span>
                 </div>
                 {e.explanation && (
-                  <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>
-                    ↳ {e.explanation}
-                  </div>
+                  <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>↳ {e.explanation}</div>
                 )}
               </div>
               {e.reconstruction_loss != null && (
@@ -359,17 +387,9 @@ const AnomalyTimeline = ({ events }) => (
                 </span>
               )}
               <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                {sev && (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: `${sevColor}22`, color: sevColor, fontWeight: 700, letterSpacing: "0.05em" }}>
-                    {sev}
-                  </span>
-                )}
-                {e.if_anomaly && (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#ff4d4d22", color: C.borderHot, fontWeight: 600 }}>IF</span>
-                )}
-                {e.lstm_anomaly && (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#c084fc22", color: C.lstm, fontWeight: 600 }}>LSTM</span>
-                )}
+                {sev && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: `${sevColor}22`, color: sevColor, fontWeight: 700, letterSpacing: "0.05em" }}>{sev}</span>}
+                {e.if_anomaly && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#ff4d4d22", color: C.borderHot, fontWeight: 600 }}>IF</span>}
+                {e.lstm_anomaly && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "#c084fc22", color: C.lstm, fontWeight: 600 }}>LSTM</span>}
               </div>
             </div>
           );
@@ -379,6 +399,7 @@ const AnomalyTimeline = ({ events }) => (
   </div>
 );
 
+// ── Main app ───────────────────────────────────────────────────────────────
 function App() {
   const [data,          setData]          = useState([]);
   const [latest,        setLatest]        = useState(null);
@@ -386,6 +407,7 @@ function App() {
   const [anomalyLog,    setAnomalyLog]    = useState([]);
   const [totalReadings, setTotalReadings] = useState(0);
   const [explanation,   setExplanation]   = useState(null);
+  const [modelStats,    setModelStats]    = useState(null);
 
   const lstmConf    = toConfidence(lstmResult?.reconstruction_loss);
   const ifAnomaly   = latest?.anomaly          ?? false;
@@ -394,6 +416,14 @@ function App() {
   const severity    = anomalySeverity(ifAnomaly, lstmAnomaly, lstmResult?.reconstruction_loss);
   const isCritical  = severity === "CRITICAL";
   const healthScore = computeHealth(latest, lstmResult);
+
+  // Fetch model stats once on mount
+  useEffect(() => {
+    fetch(`${API}/model-stats`)
+      .then(r => r.json())
+      .then(d => { if (!d.error) setModelStats(d); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -434,20 +464,12 @@ function App() {
         const ifFlag   = point.anomaly;
         const lstmFlag = lstm?.lstm_anomaly ?? false;
         if (ifFlag || lstmFlag) {
-          setAnomalyLog(prev => [
-            ...prev.slice(-99),
-            {
-              id:                  point.id,
-              time:                ts(),
-              temperature:         point.temperature,
-              vibration:           point.vibration,
-              pressure:            point.pressure,
-              reconstruction_loss: lstm?.reconstruction_loss ?? null,
-              if_anomaly:          ifFlag,
-              lstm_anomaly:        lstmFlag,
-              explanation:         explainText,
-            },
-          ]);
+          setAnomalyLog(prev => [...prev.slice(-99), {
+            id: point.id, time: ts(),
+            temperature: point.temperature, vibration: point.vibration, pressure: point.pressure,
+            reconstruction_loss: lstm?.reconstruction_loss ?? null,
+            if_anomaly: ifFlag, lstm_anomaly: lstmFlag, explanation: explainText,
+          }]);
         }
       } catch (err) {
         console.error("Fetch error:", err);
@@ -466,13 +488,18 @@ function App() {
   };
   const banner = severity ? bannerConfig[severity] : null;
 
-  const bannerMsg = explanation
-    ? explanation
-    : severity === "CRITICAL"
-      ? "Both models confirm anomaly — immediate inspection required."
-      : ifAnomaly
-      ? "IsolationForest flagged a point outlier."
-      : "LSTM detected a sequential deviation.";
+  const lossZScore = lstmResult?.loss_z_score ?? null;
+
+  const bannerMsg = (() => {
+    const parts = [];
+    if (explanation) parts.push(explanation);
+    if (lossZScore != null && Math.abs(lossZScore) > 2)
+      parts.push(`LSTM loss is ${lossZScore > 0 ? "+" : ""}${lossZScore}σ from model baseline`);
+    if (parts.length) return parts.join(" · ");
+    if (severity === "CRITICAL") return "Both models confirm anomaly — immediate inspection required.";
+    if (ifAnomaly) return "IsolationForest flagged a point outlier.";
+    return "LSTM detected a sequential deviation.";
+  })();
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", padding: "1.75rem 2rem", color: "white", fontFamily: "'Inter', 'SF Pro Text', system-ui, sans-serif", maxWidth: 1140, margin: "0 auto" }}>
@@ -522,12 +549,12 @@ function App() {
       <SensorChart title="Temperature (°C)" dataKey="temperature" color={C.temp} data={data} />
       <SensorChart title="Vibration (g)"    dataKey="vibration"   color={C.vib}  data={data} />
       <SensorChart title="Pressure (kPa)"   dataKey="pressure"    color={C.pres} data={data} />
-      <LossChart data={data} />
+      <LossChart data={data} modelStats={modelStats} currentLossZScore={lossZScore} />
       <AnomalyRateChart data={data} />
       <AnomalyTimeline events={anomalyLog} />
 
       <div style={{ textAlign: "center", color: "#2a2d3a", fontSize: 11, marginTop: "0.75rem" }}>
-        SENTINEL v0.7 · Sehaj Modi · IsolationForest + LSTM Autoencoder
+        SENTINEL v0.8 · Sehaj Modi · IsolationForest + LSTM Autoencoder
       </div>
 
     </div>
