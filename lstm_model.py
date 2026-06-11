@@ -34,7 +34,7 @@ def train(data: np.ndarray):
         pickle.dump(scaler, f)
     print("LSTM model saved.")
 
-def predict_anomaly(sequence: np.ndarray, threshold=0.08):
+def predict_anomaly(sequence: np.ndarray, threshold=0.10):
     model = load_model("lstm_model.keras")
     with open("lstm_scaler.pkl", "rb") as f:
         scaler = pickle.load(f)
