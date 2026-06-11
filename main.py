@@ -206,6 +206,16 @@ def explain(db: Session = Depends(get_db)):
     z_val = deviations[primary]
     direction = "above" if z_val > 0 else "below"
 
+    # Only explain if deviation is meaningful (> 1.5σ)
+    if abs(z_val) < 1.5:
+        return {
+            "reading_id": reading.id,
+            "primary_cause": None,
+            "z_score": z_val,
+            "explanation": None,
+            "all_deviations": deviations,
+        }
+
     return {
         "reading_id": reading.id,
         "primary_cause": primary,
