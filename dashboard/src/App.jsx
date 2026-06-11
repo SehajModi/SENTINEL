@@ -191,7 +191,7 @@ const SensorChart = ({ title, dataKey, color, data }) => {
   );
 };
 
-const LSTM_THRESHOLD = 0.10;
+const LSTM_THRESHOLD = 0.15;
 
 const LossTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
