@@ -245,7 +245,6 @@ const LossChart = ({ data }) => {
   );
 };
 
-// ── Anomaly rate trend chart ───────────────────────────────────────────────
 const AnomalyRateChart = ({ data }) => {
   const buckets = [];
   for (let i = 0; i < data.length; i += 10) {
@@ -277,12 +276,52 @@ const AnomalyRateChart = ({ data }) => {
   );
 };
 
-// ── Anomaly timeline ───────────────────────────────────────────────────────
+function exportCSV(events) {
+  const headers = ["id", "time", "temperature", "vibration", "pressure", "reconstruction_loss", "if_anomaly", "lstm_anomaly", "severity", "explanation"];
+  const rows = events.map(e => {
+    const sev = anomalySeverity(e.if_anomaly, e.lstm_anomaly, e.reconstruction_loss);
+    return [
+      e.id, e.time,
+      e.temperature, e.vibration, e.pressure,
+      e.reconstruction_loss ?? "",
+      e.if_anomaly ? "1" : "0",
+      e.lstm_anomaly ? "1" : "0",
+      sev ?? "",
+      e.explanation ?? "",
+    ].join(",");
+  });
+  const csv = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = `sentinel-anomalies-${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const AnomalyTimeline = ({ events }) => (
   <div style={{ background: C.card, borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: 12 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
       <span style={{ fontSize: 11, color: C.label, textTransform: "uppercase", letterSpacing: "0.07em" }}>Anomaly Log</span>
-      <span style={{ fontSize: 11, color: C.muted }}>{events.length} events</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 11, color: C.muted }}>{events.length} events</span>
+        {events.length > 0 && (
+          <button
+            onClick={() => exportCSV(events)}
+            style={{
+              fontSize: 10, padding: "3px 10px", borderRadius: 5,
+              background: "#1e2740", border: `1px solid ${C.border}`,
+              color: C.label, cursor: "pointer", letterSpacing: "0.05em",
+              transition: "border-color 0.2s, color 0.2s",
+            }}
+            onMouseEnter={e => { e.target.style.borderColor = C.lstm; e.target.style.color = C.lstm; }}
+            onMouseLeave={e => { e.target.style.borderColor = C.border; e.target.style.color = C.label; }}
+          >
+            ↓ EXPORT CSV
+          </button>
+        )}
+      </div>
     </div>
     {events.length === 0 ? (
       <div style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: "1.5rem 0" }}>No anomalies detected this session</div>
@@ -340,7 +379,6 @@ const AnomalyTimeline = ({ events }) => (
   </div>
 );
 
-// ── Main app ───────────────────────────────────────────────────────────────
 function App() {
   const [data,          setData]          = useState([]);
   const [latest,        setLatest]        = useState(null);
@@ -374,9 +412,7 @@ function App() {
         try {
           const lstmRes = await fetch(`${API}/predict/lstm`);
           lstm = await lstmRes.json();
-        } catch {
-          // degrade gracefully
-        }
+        } catch { /* degrade gracefully */ }
 
         if (lstm?.reconstruction_loss != null) {
           point.reconstruction_loss = parseFloat(lstm.reconstruction_loss.toFixed(4));
@@ -387,9 +423,7 @@ function App() {
           const explainRes  = await fetch(`${API}/explain`);
           const explainData = await explainRes.json();
           explainText = explainData.explanation ?? null;
-        } catch {
-          // degrade gracefully
-        }
+        } catch { /* degrade gracefully */ }
 
         setLatest(point);
         setLstmResult(lstm);
@@ -443,7 +477,6 @@ function App() {
   return (
     <div style={{ background: C.bg, minHeight: "100vh", padding: "1.75rem 2rem", color: "white", fontFamily: "'Inter', 'SF Pro Text', system-ui, sans-serif", maxWidth: 1140, margin: "0 auto" }}>
 
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#e8eaf0" }}>🛡️ SENTINEL</h1>
@@ -455,7 +488,6 @@ function App() {
         </div>
       </div>
 
-      {/* Health ring + stat cards */}
       <div style={{ display: "flex", gap: 10, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <HealthRing score={healthScore} isCritical={isCritical} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 260 }}>
@@ -470,7 +502,6 @@ function App() {
         </div>
       </div>
 
-      {/* Anomaly banner */}
       {anyAnomaly && banner && (
         <div style={{
           background: banner.bg, border: `1px solid ${banner.border}`, borderRadius: 10,
@@ -488,23 +519,15 @@ function App() {
         </div>
       )}
 
-      {/* Sensor charts */}
       <SensorChart title="Temperature (°C)" dataKey="temperature" color={C.temp} data={data} />
       <SensorChart title="Vibration (g)"    dataKey="vibration"   color={C.vib}  data={data} />
       <SensorChart title="Pressure (kPa)"   dataKey="pressure"    color={C.pres} data={data} />
-
-      {/* LSTM reconstruction loss chart */}
       <LossChart data={data} />
-
-      {/* Anomaly rate trend chart */}
       <AnomalyRateChart data={data} />
-
-      {/* Anomaly timeline */}
       <AnomalyTimeline events={anomalyLog} />
 
-      {/* Footer */}
       <div style={{ textAlign: "center", color: "#2a2d3a", fontSize: 11, marginTop: "0.75rem" }}>
-        SENTINEL v0.6 · Sehaj Modi · IsolationForest + LSTM Autoencoder
+        SENTINEL v0.7 · Sehaj Modi · IsolationForest + LSTM Autoencoder
       </div>
 
     </div>
