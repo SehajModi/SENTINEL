@@ -201,7 +201,7 @@ const SensorChart = ({ title, dataKey, color, data }) => {
 };
 
 // ── LSTM reconstruction loss chart ─────────────────────────────────────────
-const LSTM_THRESHOLD = 0.05;
+const LSTM_THRESHOLD = 0.08;
 
 const LossTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
