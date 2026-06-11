@@ -115,16 +115,20 @@ def get_all_readings(db: Session = Depends(get_db)):
     return db.query(SensorReading).all()
 
 @app.get("/retrain")
-def retrain():
+def retrain(limit: int = 0):
     from lstm_model import train
     db = SessionLocal()
-    readings = db.query(SensorReading).all()
+    if limit > 0:
+        readings = db.query(SensorReading).order_by(SensorReading.id).limit(limit).all()
+    else:
+        readings = db.query(SensorReading).all()
     db.close()
     if len(readings) < 50:
         return {"error": f"Not enough data. Have {len(readings)}, need 50+."}
     sequence = np.array([[r.temperature, r.vibration, r.pressure] for r in readings])
     train(sequence)
     return {"status": "retrained", "readings_used": len(readings)}
+
 
 @app.get("/seed")
 def seed_data(db: Session = Depends(get_db)):
