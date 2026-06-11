@@ -213,3 +213,31 @@ def explain(db: Session = Depends(get_db)):
         "explanation": f"{primary} was {abs(z_val):.1f}σ {direction} normal baseline",
         "all_deviations": deviations,
     }
+    
+@app.get("/model-stats")
+def model_stats():
+    try:
+        import pickle, numpy as np
+        with open("/app/data/lstm_scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+        db = SessionLocal()
+        readings = db.query(SensorReading).order_by(SensorReading.id).limit(2000).all()
+        db.close()
+        if len(readings) < 50:
+            return {"error": "not enough data"}
+        from lstm_model import predict_anomaly
+        losses = []
+        for i in range(0, min(len(readings)-10, 500), 5):
+            seq = np.array([[r.temperature, r.vibration, r.pressure] for r in readings[i:i+10]])
+            result = predict_anomaly(seq)
+            losses.append(result["reconstruction_loss"])
+        losses = np.array(losses)
+        return {
+            "loss_mean": round(float(losses.mean()), 4),
+            "loss_std":  round(float(losses.std()), 4),
+            "loss_p95":  round(float(np.percentile(losses, 95)), 4),
+            "loss_p99":  round(float(np.percentile(losses, 99)), 4),
+            "trained_on_n_sequences": len(losses),
+        }
+    except Exception as e:
+        return {"error": str(e)}
