@@ -7,6 +7,14 @@ from anomaly import train_model, detect_anomaly
 from lstm_model import predict_anomaly
 import numpy as np
 from lstm_model import predict_anomaly, get_model_stats
+from pydantic import BaseModel
+
+class SensorPayload(BaseModel):
+    temperature: float
+    vibration: float
+    pressure: float
+    device_id: str = "esp32-01"
+
 
 
 app = FastAPI()
@@ -273,3 +281,33 @@ def simulate_failure(db: Session = Depends(get_db)):
         "anomaly":     True,
         "simulated":   True,
     }
+    
+@app.post("/ingest")
+def ingest(payload: SensorPayload, db: Session = Depends(get_db)):
+    """Accept real sensor data from ESP32 or any hardware device."""
+    reading = SensorReading(
+        timestamp=time.time(),
+        temperature=payload.temperature,
+        vibration=payload.vibration,
+        pressure=payload.pressure,
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+
+    if len(db.query(SensorReading).all()) >= 10:
+        train_model(db.query(SensorReading).all())
+
+    is_anomaly = detect_anomaly(payload.temperature, payload.vibration, payload.pressure) and \
+                 is_physically_anomalous(payload.temperature, payload.vibration, payload.pressure)
+
+    return {
+        "id":          reading.id,
+        "timestamp":   reading.timestamp,
+        "temperature": reading.temperature,
+        "vibration":   reading.vibration,
+        "pressure":    reading.pressure,
+        "anomaly":     bool(is_anomaly),
+        "device_id":   payload.device_id,
+    }    
+    
